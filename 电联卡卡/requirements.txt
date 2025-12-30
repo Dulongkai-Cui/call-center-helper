@@ -1,0 +1,6 @@
+streamlit
+pandas
+requests
+openpyxl
+# Additional dependencies for potential extensions
+numpy
