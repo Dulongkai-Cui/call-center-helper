@@ -3,141 +3,151 @@ import time
 from utils import logic
 
 # --- Page Config ---
-st.set_page_config(page_title="Call Center Helper", page_icon="📞", layout="wide")
+st.set_page_config(page_title="Call Center V2", page_icon="📞", layout="wide")
 
-# --- Custom CSS ---
 st.markdown("""
 <style>
-    .big-font { font-size: 36px !important; font-weight: bold; color: #1E88E5; }
-    .label-font { font-size: 18px; color: #555; }
-    .stButton button { width: 100%; height: 60px; font-size: 20px; font-weight: bold; }
-    /* Pass Button Green */
-    div[data-testid="stHorizontalBlock"] button[kind="primary"] { background-color: #4CAF50; border-color: #4CAF50; }
+    .big-font { font-size: 32px !important; font-weight: bold; color: #1E88E5; }
+    .pinyin-font { font-size: 20px; color: #888; font-style: italic; }
+    .label-font { font-size: 16px; color: #555; font-weight: bold; }
+    .check-btn { border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; cursor: pointer; color: green; }
+    .stButton button { width: 100%; height: 50px; font-size: 18px; }
+    .verified { color: #2e7d32; font-weight: bold; border-bottom: 2px solid #2e7d32; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Session State Init ---
-if 'user_name' not in st.session_state:
-    st.session_state['user_name'] = ""
-if 'current_ticket' not in st.session_state:
-    st.session_state['current_ticket'] = None # Stores {'index': 123, 'data': {...}}
+# --- Session Init ---
+if 'user_name' not in st.session_state: st.session_state['user_name'] = ""
+if 'current_ticket' not in st.session_state: st.session_state['current_ticket'] = None
+if 'sheet_name' not in st.session_state: st.session_state['sheet_name'] = ""
+# Local UI state for checks
+if 'check_pass' not in st.session_state: st.session_state['check_pass'] = False
+if 'check_loc' not in st.session_state: st.session_state['check_loc'] = False
 
-# --- Sidebar: Login ---
+# --- Sidebar ---
 with st.sidebar:
-    st.title("📞 电话招募系统")
+    st.title("📞 电话招募 V2.0")
     
-    # User Selection
+    # 1. User Select
     users = ["Caller_01", "Caller_02", "Caller_03", "Caller_04", "Admin"]
-    selected_user = st.selectbox("当前员工 / User", [""] + users, index=0)
+    selected_user = st.selectbox("当前员工 / User", [""] + users)
     
     if selected_user:
         st.session_state['user_name'] = selected_user
-        st.success(f"Hi, {selected_user}")
     else:
-        st.warning("请选择姓名以开始")
+        st.warning("请选择员工")
         st.stop()
         
     st.divider()
-    st.info("💡 提示: \n1. 系统会自动抢号Locked \n2. 提交后自动下一条 \n3. 禁止多开同一账号")
+    
+    # 2. Sheet Select (New V2)
+    sheet_options = logic.get_sheet_options()
+    if sheet_options:
+        selected_sheet = st.selectbox("选择任务表 / Sheet", sheet_options)
+        if selected_sheet != st.session_state['sheet_name']:
+            st.session_state['sheet_name'] = selected_sheet
+            logic.set_active_sheet(selected_sheet)
+            st.session_state['current_ticket'] = None # Reset ticket on sheet change
+            st.rerun()
+    else:
+        st.error("无法加载 Sheet 列表")
+    
+    st.divider()
+    st.caption("Emoji: 🟢通过 🔴拒绝 🟡未接")
 
-# --- Main Logic ---
-
+# --- Logic ---
 def load_new_ticket():
-    with st.spinner(f"{st.session_state['user_name']} 正在自动领号中..."):
+    # Reset UI checks
+    st.session_state['check_pass'] = False
+    st.session_state['check_loc'] = False
+    
+    with st.spinner("正在获取下一条..."):
         idx, data = logic.find_and_lock_ticket(st.session_state['user_name'])
         if idx:
             st.session_state['current_ticket'] = {"index": idx, "data": data}
             st.rerun()
         else:
             st.session_state['current_ticket'] = None
-            st.error("暂无可用数据，或全部已完成！")
+            st.error("当前表无可用任务！(或全部被 D 列过滤)")
 
-# If no ticket loaded, try load one
 if st.session_state['current_ticket'] is None:
-    if st.button("🚀 开始领号 / Start Work", type="primary"):
+    st.info(f"当前任务表: {st.session_state.get('sheet_name', 'Open to Select')}")
+    if st.button("🚀 开始 / Start", type="primary"):
         load_new_ticket()
 else:
-    # --- Workflow UI ---
     ticket = st.session_state['current_ticket']
     data = ticket['data']
-    ticket_idx = ticket['index']
+    idx = ticket['index']
     
-    # Header Info
-    c1, c2, c3 = st.columns([2, 1, 1])
-    with c1:
-        st.markdown(f"<div class='label-font'>目标号码 / Phone</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='big-font'>{data.get('phone', 'N/A')}</div>", unsafe_allow_html=True)
-    with c2:
-        st.metric("ID / Account", data.get('account', 'N/A'))
-    with c3:
-        st.metric("常住地", data.get('location', 'Unknown'))
+    # --- Top Info Row ---
+    c1, c2, c3 = st.columns([1.5, 1, 1])
+    
+    with c1: # Name & Pinyin
+        st.markdown("<p class='label-font'>真实姓名 (Name)</p>", unsafe_allow_html=True)
+        st.markdown(f"<span><span class='big-font'>{data.get('name')}</span> <span class='pinyin-font'>({data.get('pinyin')})</span></span>", unsafe_allow_html=True)
+        
+    with c2: # Phone
+        st.markdown("<p class='label-font'>手机号 (Phone)</p>", unsafe_allow_html=True)
+        st.markdown(f"<div class='big-font'>{data.get('phone')}</div>", unsafe_allow_html=True)
+
+    with c3: # Device
+        st.markdown("<p class='label-font'>设备 (Device)</p>", unsafe_allow_html=True)
+        st.info(data.get('device', 'N/A'))
         
     st.divider()
     
-    # Script & Info
-    info_col, script_col = st.columns([1, 2])
+    # --- Verify Row (Pass & Location) ---
+    v1, v2 = st.columns(2)
     
-    with info_col:
-        st.subheader("📋 信息核对")
-        st.info(f"**设备信息 (Col P)**: {data.get('device', 'N/A')}")
-        st.text("请确认对方是否成年，设备是否符合要求。")
+    with v1:
+        st.caption("通行证 (ID Pass)")
+        pass_val = data.get('pass_id', 'N/A')
+        # Check Button
+        if st.button(f"验证: {pass_val}", key="btn_check_pass", help="点击确认一致"):
+            st.session_state['check_pass'] = True
         
-        # Audio Placeholder
-        st.audio(f"https://example.com/audio/{data.get('account')}.mp3", format="audio/mp3")
-        st.caption("录音文件名: " + f"{data.get('account')}.mp3")
-
-    with script_col:
-        st.subheader("🗣️ 话术流程")
-        st.markdown("""
-        1. **确认身份**: "请问是尾号XXXX的机主吗？"
-        2. **核对设备**: "您现在使用的手机型号是 `{}` 吗？是否只有这一台？"
-        3. **确认时间**: "接下来2天是否有空参与测试？"
-        4. **索要QQ**: "请提供一下QQ号方便拉群。"
-        """.format(data.get('device', '...')))
-        
-        # Input for Pass scenario
-        new_qq = st.text_input("📝 录入新 QQ (仅通过时填写)", key="input_qq")
+        if st.session_state['check_pass']:
+            st.markdown(f"<div class='verified'>✅ {pass_val} (已核对)</div>", unsafe_allow_html=True)
+            
+    with v2:
+        st.caption("常住地 (Location)")
+        loc_val = data.get('location', 'N/A')
+        if st.button(f"验证: {loc_val}", key="btn_check_loc"):
+            st.session_state['check_loc'] = True
+            
+        if st.session_state['check_loc']:
+            st.markdown(f"<div class='verified'>✅ {loc_val} (已核对)</div>", unsafe_allow_html=True)
 
     st.divider()
-    
-    # Action Buttons
-    st.subheader("处理结果 / Action")
-    
+
+    # --- Actions ---
+    n_col, _ = st.columns([3, 1])
+    with n_col:
+        note_text = st.text_input("📝 备注 (R列) - 可选", placeholder="在此输入特殊情况...")
+
     b1, b2, b3 = st.columns(3)
     
+    def do_submit(action):
+        payload = {"note": note_text}
+        ok = logic.submit_ticket(idx, action, st.session_state['user_name'], payload)
+        if ok:
+            st.toast("✅ 提交成功")
+            load_new_ticket()
+        else:
+            st.error("提交失败")
+
     with b1:
-        if st.button("🟢 完美通过 / Pass", type="primary"):
-            if not new_qq:
-                st.toast("⚠️ 请务必填写 QQ 号！")
-            else:
-                success = logic.submit_ticket(ticket_idx, 'PASS', st.session_state['user_name'], {'qq': new_qq})
-                if success:
-                    st.toast("✅ 提交成功！")
-                    load_new_ticket()
-                else:
-                    st.error("提交失败，请重试")
-
+        if st.button("🟢 完美通过"):
+            do_submit('PASS')
     with b2:
-        if st.button("🔴 拒绝/设备不符 / Reject"):
-            success = logic.submit_ticket(ticket_idx, 'FAIL', st.session_state['user_name'])
-            if success:
-                st.toast("提交成功")
-                load_new_ticket()
-    
+        if st.button("🔴 拒绝/不符"):
+            do_submit('FAIL')
     with b3:
-        if st.button("🟡 无人接/挂断 / No Answer"):
-             success = logic.submit_ticket(ticket_idx, 'NO_ANSWER', st.session_state['user_name'])
-             if success:
-                st.toast("已标记未接")
-                load_new_ticket()
+        if st.button("🟡 未接/挂断"):
+            do_submit('NO_ANSWER')
 
-# Admin Section
+# Admin
 if st.session_state['user_name'] == "Admin":
     st.divider()
-    st.subheader("Admin Dashboard")
-    if st.button("Refresh Stats"):
-        df = logic.get_dataframe()
-        if not df.empty:
-            st.dataframe(df)
-            counts = df.iloc[:, logic.COL_STAFF].value_counts() # Count by staff
-            st.bar_chart(counts)
+    if st.button("Debug: Show Raw Data"):
+        st.dataframe(logic.get_dataframe())
