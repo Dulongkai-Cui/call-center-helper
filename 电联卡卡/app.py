@@ -26,7 +26,7 @@ if 'check_loc' not in st.session_state: st.session_state['check_loc'] = False
 
 # --- Sidebar ---
 with st.sidebar:
-    st.title("📞外测招募急速助手")
+    st.title("📞外测招募精灵")
     
     # 1. User Select
     users = ["Caller_01", "Caller_02", "Caller_03", "Caller_04", "Admin"]
@@ -151,5 +151,6 @@ if st.session_state['user_name'] == "Admin":
     st.divider()
     if st.button("Debug: Show Raw Data"):
         st.dataframe(logic.get_dataframe())
+
 
 
