@@ -147,3 +147,21 @@ class TencentDocsAPI:
             return None
         except Exception:
             return None
+
+    def get_sheet_list(self):
+        """
+        Fetches the list of all sheets in the file.
+        Returns: List of dicts [{'id': 'BB08J2', 'title': '总表'}, ...]
+        """
+        url = f"https://docs.qq.com/openapi/drive/v2/files/{self.file_id}/sheets"
+        try:
+            res = requests.get(url, headers=self.get_headers(), timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                if 'data' in data and 'sheets' in data['data']:
+                    return data['data']['sheets']
+            return []
+        except Exception as e:
+            st.error(f"Failed to fetch sheets: {e}")
+            return []
+
